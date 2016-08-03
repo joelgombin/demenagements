@@ -1,0 +1,310 @@
+---
+title: "Ça s'en va et ça revient..."
+author: "Joël Gombin"
+date: "27 juillet 2016"
+output: 
+  html_document:
+    self_contained: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, cache = TRUE)
+```
+
+Vous n'avez peut-être pas la chance, cet été, de partir en vacances au camping des flots bleus (mais vous pouvez vous consoler en regardant Camping 3 en streaming !). Heureusement, je suis là pour vous mettre le meilleur de la musique populaire en tête -- ne me remerciez pas, ça me fait plaisir. 
+
+<iframe width="420" height="315" src="https://www.youtube.com/embed/1t07Zj91hzA" frameborder="0" allowfullscreen></iframe>
+
+Bref, ce dont je voulais vous parler ce mois-ci, c'est de ces tous petits riens, les migrations résidentielles, ces gens qui s'en vont et qui reviennent, qui changent notre ville. 
+
+L'INSEE a en effet fait très plaisir aux nerds de la statistique publique (avouons-le, c'est une toute petite niche) en publiant il y a peu [les résultats du recensement, millésime 2013](http://www.insee.fr/fr/bases-de-donnees/default.asp?page=recensement/resultats/2013/donnees-detaillees-recensement-2013.htm), parmi lesquels figurent notamment, pour la première fois depuis 2008, des données sur les mobilités résidentielles.
+
+Il s'agit en fait de demander aux personnes recensées où elles résidaient auparavant. Ce "auparavant" a d'ailleurs beaucoup changé : jusqu'en 1999, c'était au recensement précédent, soit grosso modo une dizaine d'années avant ; de 2006 à 2008 c'était cinq ans auparavant ; et à partir du millésime 2013 donc, c'est un an auparavant. Vive les ruptures de série ! 
+
+```{r packages, cache=FALSE}
+library(dplyr)
+library(MonetDBLite)
+library(tmap)
+```
+
+
+```{r creation_db, eval=FALSE}
+# importer les données dans une DB, à ne faire qu'une fois
+library(DBI)
+library(Insee2MonetDB)
+# library(MonetDBLite)
+
+if (!dir.exists("~/monetdb")) {
+  dir.create("~/monetdb")
+}
+mdb <- dbConnect(MonetDBLite::MonetDBLite(), "~/monetdb")
+
+# RP MIGCOM 2013
+Insee2MonetDB(url = "http://telechargement.insee.fr/fichiersdetail/RP2013/txt/RP2013_MIGCOM_txt.zip", folder = "~/monetdb", tablename = "rp_migcom_2013")
+
+# RP MIGGCO 2013
+Insee2MonetDB(url = "http://telechargement.insee.fr/fichiersdetail/RP2013/txt/RP2013_MIGGCO_txt.zip", folder = "~/monetdb", tablename = "rp_miggco_2013")
+
+# RP MIGDEP 2013
+Insee2MonetDB(url = "http://telechargement.insee.fr/fichiersdetail/RP2013/txt/RP2013_MIGDEP_txt.zip", folder = "~/monetdb", tablename = "rp_migdep_2013")
+
+
+
+```
+
+
+```{r data, cache=FALSE}
+
+conn <- src_monetdblite("~/monetdb")
+rp_migcom_2013 <- tbl(conn, from = "rp_migcom_2013")
+modalites <- readr::read_csv2("./data/MOD_MIGCOM_2013.txt", locale = readr::locale(encoding = "latin1"))
+
+relabel <- function(df, modalites, variable, VAR_CODE = "VAR_CODE", VAR_LIB = "VAR_LIB", MOD_LIB = "MOD_LIB", MOD_CODE = "MOD_CODE") {
+  df[, unique(modalites[tolower(modalites[[VAR_CODE]]) %in% tolower(variable), VAR_LIB])] <-  modalites[tolower(modalites[[VAR_CODE]]) %in% tolower(variable), MOD_LIB][match(df[[variable]], modalites[tolower(modalites[[VAR_CODE]]) %in% tolower(variable), MOD_CODE])]
+  return(df)
+}
+```
+
+Je m'étais [déjà interrogé il y a quelques années](http://www.metropolitiques.eu/Marseille-de-la-sociologie-urbaine.html), en passant, sur la réalité de l'impact des migrations résidentielles sur la démographie et la sociologie marseillaises. Pour le dire avec des mots qui ne sont pas ceux du sociologues, certains ont cru voir certains quartiers de Marseille envahis par les bobos (et se sont même sentis autorisés à en tirer [des titres encore plus foireux que les miens](http://www.lemonde.fr/m-actu/article/2014/02/14/il-fait-bobo-a-marseille_4365695_4497186.html)). D'autres plus sceptiques pensaient que Carlotti et Mennucci -- qui, après une carrière politique déjà longue dans le post-defferrisme, ont enfourché le cheval de la rénovation morale de la scène politique locale, supposé plaire aux néo-bobos -- prenaient leurs désirs pour la réalité. Bruno Gilles l'avait énoncé de manière fleurie à [nos confrères et amis du Ravi](http://www.leravi.org/spip.php?article1719) : "il faudrait que j'ai pas de cul pour qu'après chaque enterrement ce soit un bobo qui emménage", déclarait-il. Et la suite a prouvé que du cul, il en a eu.
+
+Mais la lecture de cette question à travers un angle purement politique, [aussi intéressante soit-elle](http://www.slate.fr/france/85009/fable-gentrification-bobo-basculer-marseille-gauche), est trop réductrice. D'abord parce que gentrification et changement politique ne sont pas nécessairement mécaniquement liés. Ensuite, parce que l'effet des mobilités résidentielles n'est pas forcément univoque ni simple. 
+
+Commençons par une première donnée très simple. Entre 2012 et 2013, 28547 personnes ont emmenagé à Marseille. Dans le même temps, 28967 ont quitté la ville. Le solde migratoire est donc quasi nul, très légèrement négatif même. On est loin de l'afflux massif décrit par certains !  
+
+```{r solde, eval=FALSE}
+rp_migcom_2013 %>% 
+  filter(!(dcran %in% 13201:13216), commune == "13055") %>% 
+  summarise(n = sum(ipondi))
+
+rp_migcom_2013 %>% 
+  filter(dcran %in% 13201:13216, commune != "13055") %>% 
+  summarise(n = sum(ipondi))
+```
+
+```{r solde_arrondissement}
+
+library(rgdal)
+
+arrondissements <- readOGR("./data/", "arrondissements-municipaux-20160128", stringsAsFactors = FALSE, verbose = FALSE)
+
+load("./data/communesOSM.Rdata")
+
+arrondissements <- arrondissements[arrondissements@data$insee %in% 13201:13216,]
+
+effectifs_arm <- rp_migcom_2013 %>% filter(dcran %in% 13201:13216) %>% group_by(dcran) %>% summarise(pop = sum(ipondi)) %>% collect()
+
+library(leaflet)
+
+pal <- colorBin(rev(RColorBrewer::brewer.pal(6, "RdBu")[1:5]), domain = c(-2, 3), bins = 5)
+
+
+rp_migcom_2013 %>% 
+  filter(!(dcran %in% 13201:13216), commune == "13055") %>% 
+  group_by(arm) %>% 
+  summarise(n1 = sum(ipondi)) %>% 
+  left_join(
+    rp_migcom_2013 %>% 
+      filter(dcran %in% 13201:13216, commune != "13055") %>% 
+      group_by(dcran) %>% 
+      summarise(n2 = sum(ipondi)),
+    by = c("arm" = "dcran")
+  ) %>% 
+  mutate(diff = n1 - n2) %>% 
+  collect() %>% 
+  left_join(effectifs_arm, by = c("arm" = "dcran")) %>% 
+  mutate(pop_in = n1 / pop * 100,
+         pop_out = n2 / pop * 100,
+         pop_diff = diff / pop * 100,
+         rotation = (n1 + n2) / (pop * 2) * 100) %>% 
+  arrange(diff) %>% 
+  append_data(arrondissements, ., key.shp = "insee", key.data = "arm") %>% 
+  leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(fillColor = ~ pal(pop_diff), stroke = FALSE, fillOpacity = 0.8, popup = ~ paste0("Arrondissement : ", substr(arm, 4, 5), "<BR>Solde : ", round(pop_diff, 2), "%")) %>% 
+  addLegend(position = "topright", pal = pal, values = seq(-2, 3, 1), title = "Solde migratoire entre 2012 et 2013", labFormat = labelFormat(suffix = "%", between = " à "))
+
+
+```
+
+Il est vrai que l'impact des migrations résidentielles n'est pas le même pour tous les arrondissements. Ainsi, le 1er et les 5e et 6e arrondissements sont-ils ceux qui ont vu leur population s'accroître le plus du fait des migrations résidentielles : elles ont contribué à accroître la population du 1er arrondissement de presque 3 % en un an... Plus parlant encore, le taux de rotation (moyenne entre le taux d'entrée et le taux de sortie) de la population du aux migrations résidentielles est de plus de 5,5 % dans le 1 er arrondissement, et entre 4,5 et 5 % dans les 5e et 6e arrondissements. Ailleurs, il est inférieur ; le 15e arrondissement est celui dans lequel le taux de rotation est le plus faible (2,3 %). De manière générale, les arrondissements de la périphérie nord (du 11e au 16e) sont ceux qui sont les moins concernés par la mobilité résidentielle ; parce qu'on vient peu s'y installer (même dans le 16e, dans lequel se trouve l'Estaque supposée être en voie de gentrification, le taux d'entrée n'est que de 2,7 %, contre plus de 7 % dans le 1er), mais aussi parce qu'on en sort peu (dans le 15e, le taux de sortie n'est que de 2,7 %, alors qu'il dépasse 4,1 % dans le 1er). 
+
+
+Ça s'en va et ça revient, certes... mais pas aux mêmes âges. Le solde migratoire n'est positif, à l'échelle de la ville, qu'entre 15 et 30 ans. Avant 15 ans, et après 30 ans, il y a plus de gens qui ont quitté Marseille que de nouveaux arrivants, quel que soit l'âge considéré. Et si on tient compte du fait que l'essentiel du solde positif se fait entre 15 et 25 ans, on comprend pourquoi le renouvellement des habitants de la ville n'a pas produit les effets électoraux espérés : ces nouveaux habitants tant désirés, voire fantasmés, par certains politiques ont un âge... auquel on ne vote pas, ou si peu. À l'inverse, entre 30 ans et 65 ans, dans les classes d'âge actives, la ville perd des habitants. La perte est encore plus nette entre 0 et 15 ans -- ce qui correspond au déficit d'adultes en âge d'avoir des enfants.   
+
+```{r age}
+age_entrants <- rp_migcom_2013 %>% 
+  filter(!(dcran %in% 13201:13216), commune == "13055") %>% 
+  group_by(agerevq) %>% 
+  summarise(n_entrants = sum(ipondi)) %>% 
+  collect %>% 
+  arrange(agerevq)
+
+ age_sortants <- rp_migcom_2013 %>% 
+  filter((dcran %in% 13201:13216), commune != "13055") %>% 
+  group_by(agerevq) %>% 
+  summarise(n_sortants = sum(ipondi)) %>% 
+  collect %>% 
+  arrange(agerevq)
+
+ diff_age <- left_join(age_entrants, age_sortants) %>% 
+   mutate(diff = n_entrants - n_sortants)
+   
+library(ggiraph)
+library(ggplot2)
+
+gg_age <- ggplot(diff_age, aes(x = as.integer(agerevq) + 2.5, y = diff)) +
+  geom_bar_interactive(aes(tooltip = as.character(round(diff))), stat = "identity", fill = "#29586F") +
+  scale_x_continuous(breaks = seq(0, 100, 5), limits = c(0, 100), expand = c(0, 0)) +
+  theme_bw() +
+  xlab("") +
+  ylab("Solde migratoire") +
+  coord_flip()
+
+ggiraph(code = print(gg_age), width = 1, pointsize = 10)
+  
+```
+
+```{r age_arr, eval=FALSE}
+age_entrants <- rp_migcom_2013 %>% 
+  filter(!(dcran %in% 13201:13216), commune == "13055") %>% 
+  group_by(agerevq, arm) %>% 
+  summarise(n_entrants = sum(ipondi)) %>% 
+  collect %>% 
+  arrange(agerevq)
+
+ age_sortants <- rp_migcom_2013 %>% 
+  filter((dcran %in% 13201:13216), commune != "13055") %>% 
+  group_by(agerevq, dcran) %>% 
+  summarise(n_sortants = sum(ipondi)) %>% 
+  collect %>% 
+  arrange(agerevq)
+
+ diff_age <- left_join(age_entrants, age_sortants, by = c("agerevq" = "agerevq", "arm" = "dcran")) %>% 
+   mutate(diff = n_entrants - n_sortants)
+
+ gg_age <- ggplot(diff_age, aes(x = as.integer(agerevq) + 2.5, y = diff)) +
+  geom_bar_interactive(aes(tooltip = as.character(round(diff))), stat = "identity", fill = "#29586F") +
+  scale_x_continuous(breaks = seq(0, 100, 5), limits = c(0, 100), expand = c(0, 0)) +
+  theme_bw() +
+  xlab("") +
+  ylab("Solde migratoire") +
+  coord_flip() +
+  facet_wrap(facets = ~ arm, nrow = 4)
+
+```
+
+De même que le solde migratoire marseillais n'est positif que parmi les 15-30 ans, la répartition par catégorie socioprofessionnelle des arrivants et de ceux qui partent laissent apparaître que le solde n'est positif qu'en ce qui concerne les étudiants. Parmi tous les autres groupes sociaux, qu'ils soient actifs ou inactifs (retraités, femmes au foyer, jeunes scolarisés non-étudiants...), on en compte davantage qui ont quitté Marseille entre 2012 et 2013 qu'il n'en est arrivé. 
+
+```{r diff_csp}
+csp_entrants <- rp_migcom_2013 %>% 
+  filter(!(dcran %in% 13201:13216), commune == "13055") %>% 
+  select(cs1, ipondi, tact) %>% 
+  collect %>% 
+  relabel(modalites = as.data.frame(modalites), variable = "cs1") %>% 
+  mutate(csp = if_else(cs1 == "8" & tact == "22", "Étudiant", `Catégorie socioprofessionnelle en 8 postes`)) %>% 
+  group_by(csp) %>% 
+  summarise(n_entrants = sum(ipondi)) %>% 
+  arrange(csp)
+
+ csp_sortants <- rp_migcom_2013 %>% 
+  filter((dcran %in% 13201:13216), commune != "13055") %>% 
+  select(cs1, ipondi, tact) %>% 
+  collect %>% 
+  relabel(modalites = as.data.frame(modalites), variable = "cs1") %>% 
+  mutate(csp = if_else(cs1 == "8" & tact == "22", "Étudiant", `Catégorie socioprofessionnelle en 8 postes`)) %>% 
+  group_by(csp) %>% 
+  summarise(n_sortants = sum(ipondi)) %>% 
+  arrange(csp)
+
+ diff_csp <- left_join(csp_entrants, csp_sortants) %>% 
+   mutate(diff = n_entrants - n_sortants) %>% 
+   mutate(csp = factor(csp, 
+                       levels = rev(c("Agriculteurs exploitants", 
+                                       "Artisans, commerçants et chefs d'entreprise",
+                                       "Cadres et professions intellectuelles supérieures",
+                                       "Professions Intermédiaires",
+                                       "Employés",
+                                       "Ouvriers", 
+                                       "Retraités",
+                                       "Autres personnes sans activité professionnelle",
+                                       "Étudiant")),
+                       labels = rev(c("Agriculteurs", 
+                                       "Artisans, commerçants\net chefs d'entreprise",
+                                       "Cadres et professions\nintellectuelles supérieures",
+                                       "Professions intermédiaires",
+                                       "Employés",
+                                       "Ouvriers", 
+                                       "Retraités",
+                                       "Autres inactifs",
+                                       "Étudiants"))))
+
+gg_csp <- ggplot(diff_csp, aes(x = csp, y = diff)) +
+  geom_bar_interactive(aes(tooltip = as.character(round(diff))), stat = "identity", fill = "#29586F") +
+  theme_bw() +
+  xlab("") +
+  ylab("Solde migratoire") +
+  coord_flip()
+
+ggiraph(code = print(gg_csp), width = 1, pointsize = 10)
+
+```
+
+  Le graphique ci-dessous permet d'apprécier le solde migratoire par caégorie socioprofessionnelle par arrondissement. L'arrivée d'étudiants apparaît comme étant, dans les quartiers de centre-ville (1er, 5e et 6e arrondissements), liée à la gentrification : les professions intermédiaires et les cadres supérieurs y sont également bien représentés parmi les nouveaux habitants. Cependant, s'appuyer sur l'arrivée d'étudiants ne suffit visiblement pas : dans les 10e (autour de la Timone ?) et 13e arrondissements (Saint-Jérôme), l'afflux d'étudiants ne se traduit pas par une gentrification, mais s'accompagne au contraire d'une réelle dégentrification (notamment dans le 13e). 
+
+```{r diff_csp_arr, fig.width=10, fig.height=12, fig.align="center"}
+csp_entrants <- rp_migcom_2013 %>% 
+  filter(!(dcran %in% 13201:13216), commune == "13055") %>% 
+  select(cs1, ipondi, tact, arm) %>% 
+  collect %>% 
+  relabel(modalites = as.data.frame(modalites), variable = "cs1") %>% 
+  mutate(csp = if_else(cs1 == "8" & tact == "22", "Étudiant", `Catégorie socioprofessionnelle en 8 postes`)) %>% 
+  group_by(csp, arm) %>% 
+  summarise(n_entrants = sum(ipondi)) %>% 
+  arrange(csp)
+
+ csp_sortants <- rp_migcom_2013 %>% 
+  filter((dcran %in% 13201:13216), commune != "13055") %>% 
+  select(cs1, ipondi, tact, dcran) %>% 
+  collect %>% 
+  relabel(modalites = as.data.frame(modalites), variable = "cs1") %>% 
+  mutate(csp = if_else(cs1 == "8" & tact == "22", "Étudiant", `Catégorie socioprofessionnelle en 8 postes`)) %>% 
+  group_by(csp, dcran) %>% 
+  summarise(n_sortants = sum(ipondi)) %>% 
+  arrange(csp)
+
+ diff_csp <- left_join(csp_entrants, csp_sortants, by = c("csp" = "csp", "arm" = "dcran")) %>% 
+   tidyr::replace_na(list(n_entrants = 0, n_sortants = 0)) %>% 
+   mutate(diff = n_entrants - n_sortants) %>% 
+   ungroup %>% 
+   mutate(arrondissement = substr(arm, 4, 5)) %>% 
+   mutate(csp = factor(csp, 
+                       levels = rev(c("Agriculteurs exploitants", 
+                                       "Artisans, commerçants et chefs d'entreprise",
+                                       "Cadres et professions intellectuelles supérieures",
+                                       "Professions Intermédiaires",
+                                       "Employés",
+                                       "Ouvriers", 
+                                       "Retraités",
+                                       "Autres personnes sans activité professionnelle",
+                                       "Étudiant")),
+                       labels = rev(c("Agriculteurs", 
+                                       "Artisans, commerçants\net chefs d'entreprise",
+                                       "Cadres et professions\nintellectuelles supérieures",
+                                       "Professions intermédiaires",
+                                       "Employés",
+                                       "Ouvriers", 
+                                       "Retraités",
+                                       "Autres inactifs",
+                                       "Étudiants"))))
+
+ggplot(diff_csp, aes(x = csp, y = diff)) +
+  geom_bar(stat = "identity", fill = "#29586F") +
+  theme_bw() +
+  xlab("") +
+  ylab("Solde migratoire") +
+  coord_flip() +
+  facet_wrap(~ arrondissement, nrow = 4)
+
+```
+
+Il s'agit d'ailleurs là d'une différence majeure entre la situation marseillaise et ce qu'on peut observer ailleurs, par exemple à Paris. Si à Paris la gentrification connaît des rythmes différents selon les quartiers, elle concerne l'ensemble de la ville. À Marseille à l'inverse, l'attractivité -- limitée -- de certains quartiers de la ville pour les gentrifieurs s'accompagne d'un défaut d'attractivité du reste de la ville, non seulement pour lesdits gentrifieurs, mais aussi globalement pour tous les groupes sociaux. Pour le dire autrement, dans une certaine mesure, on déshabille Pierre pour habiller Paul. Voilà de quoi alimenter de futurs débats sur l'intérêt et les limites d'une supposée "boboïsation" du centre-ville...
