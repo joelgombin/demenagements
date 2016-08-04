@@ -308,3 +308,6 @@ ggplot(diff_csp, aes(x = csp, y = diff)) +
 ```
 
 Il s'agit d'ailleurs là d'une différence majeure entre la situation marseillaise et ce qu'on peut observer ailleurs, par exemple à Paris. Si à Paris la gentrification connaît des rythmes différents selon les quartiers, elle concerne l'ensemble de la ville. À Marseille à l'inverse, l'attractivité -- limitée -- de certains quartiers de la ville pour les gentrifieurs s'accompagne d'un défaut d'attractivité du reste de la ville, non seulement pour lesdits gentrifieurs, mais aussi globalement pour tous les groupes sociaux. Pour le dire autrement, dans une certaine mesure, on déshabille Pierre pour habiller Paul. Voilà de quoi alimenter de futurs débats sur l'intérêt et les limites d'une supposée "boboïsation" du centre-ville...
+
+
+*Comme d'habitude, le code et les données utilisées pour réaliser cette chronique sont disponibles [sur github](https://www.github.com/joelgombin/demenagements).* 
